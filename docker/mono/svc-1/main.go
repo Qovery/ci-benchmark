@@ -16,3 +16,5 @@ func main() {
 }
 
 // vendor bench mono warm 1
+
+// vendor bench mono warm 2
