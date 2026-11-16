@@ -5,3 +5,5 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 CMD ["sh", "-c", "python -c 'import torch; print(torch.__version__)' && sleep infinity"]
 
 # vendor bench fat warm 1
+
+# vendor bench fat warm 2
