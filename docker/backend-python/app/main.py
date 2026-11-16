@@ -11,3 +11,5 @@ class Health(BaseModel):
 @app.get("/health", response_model=Health)
 def health() -> Health:
     return Health(status="ok")
+
+# vendor bench backend-python warm 1
