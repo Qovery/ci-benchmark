@@ -4,3 +4,5 @@ export default function Page() {
 }
 
 // vendor bench frontend-ssr warm 1
+
+// vendor bench frontend-ssr warm 2
