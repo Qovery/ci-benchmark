@@ -20,3 +20,5 @@ createRoot(document.getElementById("root")!).render(
 );
 
 // vendor bench frontend-spa warm 1
+
+// vendor bench frontend-spa warm 2
