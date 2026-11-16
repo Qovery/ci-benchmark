@@ -9,3 +9,5 @@ final class Health
         return 'ok';
     }
 }
+
+// vendor bench backend-php warm 1
