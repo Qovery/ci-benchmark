@@ -18,3 +18,5 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+// vendor bench frontend-spa warm 1
