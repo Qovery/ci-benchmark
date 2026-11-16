@@ -1,0 +1,92 @@
+# One timed `depot build --push` on Depot remote builder (16 vCPU / 32 GB). Auth: OIDC trust on Depot
+# project, project ID in repo variable DEPOT_PROJECT_ID.
+
+name: bench-depot
+run-name: "depot: ${{ inputs.label }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: Run label, e.g. "floor cold 1"
+        required: true
+      slug:
+        description: Target name without "/", used for the image name
+        required: true
+      repo:
+        description: owner/name to build, empty for this repository
+        required: false
+        default: ""
+      ref:
+        description: Commit to build
+        required: true
+      dockerfile:
+        description: Dockerfile path inside the repository
+        required: true
+      context:
+        description: Build context inside the repository
+        required: true
+      variant:
+        description: cold or warm
+        required: true
+        type: choice
+        options: [cold, warm]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check inputs
+        env:
+          SLUG: ${{ inputs.slug }}
+          DEPOT_PROJECT_ID: ${{ vars.DEPOT_PROJECT_ID }}
+        run: |
+          case "$SLUG" in */*) echo "::error::slug must not contain '/'"; exit 1 ;; esac
+          [ -n "$DEPOT_PROJECT_ID" ] || { echo "::error::repository variable DEPOT_PROJECT_ID is not set"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo || github.repository }}
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: depot/setup-action@v1
+
+      - name: Build
+        env:
+          DEPOT_PROJECT_ID: ${{ vars.DEPOT_PROJECT_ID }}
+          SLUG: ${{ inputs.slug }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > built-commit.txt
+          img="ghcr.io/${GITHUB_REPOSITORY,,}/depot-${SLUG}:${GITHUB_RUN_ID}"
+          no_cache=()
+          [ "$VARIANT" = cold ] && no_cache=(--no-cache)
+          start=$(date +%s%N)
+          depot build --project "$DEPOT_PROJECT_ID" "${no_cache[@]}" --file "$DOCKERFILE" --tag "$img" --push "$CONTEXT"
+          end=$(date +%s%N)
+          secs=$(awk -v ms=$(( (end - start) / 1000000 )) 'BEGIN { printf "%.1f", ms / 1000 }')
+          printf 'run,seconds\n1,%s\n' "$secs" > timings.csv
+          echo "::notice::depot ${SLUG} ${VARIANT} ${secs}s"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-depot-${{ inputs.slug }}-${{ github.run_id }}
+          path: |
+            timings.csv
+            built-commit.txt

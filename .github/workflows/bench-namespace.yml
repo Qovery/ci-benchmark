@@ -1,0 +1,87 @@
+# One timed `docker buildx build --push` on Namespace. No buildx setup step: Namespace runners point
+# buildx at Remote Builder, docker/setup-buildx-action would replace that.
+
+name: bench-namespace
+run-name: "namespace: ${{ inputs.label }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      label:
+        description: Run label, e.g. "floor cold 1"
+        required: true
+      slug:
+        description: Target name without "/", used for the image name
+        required: true
+      repo:
+        description: owner/name to build, empty for this repository
+        required: false
+        default: ""
+      ref:
+        description: Commit to build
+        required: true
+      dockerfile:
+        description: Dockerfile path inside the repository
+        required: true
+      context:
+        description: Build context inside the repository
+        required: true
+      variant:
+        description: cold or warm
+        required: true
+        type: choice
+        options: [cold, warm]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ${{ vars.NAMESPACE_RUNS_ON || 'namespace-profile-default' }}
+    timeout-minutes: 120
+    steps:
+      - name: Check inputs
+        env:
+          SLUG: ${{ inputs.slug }}
+        run: |
+          case "$SLUG" in */*) echo "::error::slug must not contain '/'"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo || github.repository }}
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        env:
+          SLUG: ${{ inputs.slug }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+          VARIANT: ${{ inputs.variant }}
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > built-commit.txt
+          docker buildx ls
+          img="ghcr.io/${GITHUB_REPOSITORY,,}/namespace-${SLUG}:${GITHUB_RUN_ID}"
+          no_cache=()
+          [ "$VARIANT" = cold ] && no_cache=(--no-cache)
+          start=$(date +%s%N)
+          docker buildx build "${no_cache[@]}" --file "$DOCKERFILE" --tag "$img" --push "$CONTEXT"
+          end=$(date +%s%N)
+          secs=$(awk -v ms=$(( (end - start) / 1000000 )) 'BEGIN { printf "%.1f", ms / 1000 }')
+          printf 'run,seconds\n1,%s\n' "$secs" > timings.csv
+          echo "::notice::namespace ${SLUG} ${VARIANT} ${secs}s"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timings-namespace-${{ inputs.slug }}-${{ github.run_id }}
+          path: |
+            timings.csv
+            built-commit.txt
